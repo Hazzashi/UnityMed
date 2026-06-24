@@ -1,0 +1,165 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* ── LIGHT MODE — "Papel" ───────────────────────────── */
+    --background:      48 20% 95%;   /* #F4F3EF — bege areia */
+    --foreground:       0  0%  0%;   /* #000000 — preto */
+
+    --card:             0  0% 100%;  /* #FFFFFF — branco puro */
+    --card-foreground:  0  0%  0%;
+
+    --popover:          0  0% 100%;
+    --popover-foreground: 0 0% 0%;
+
+    --primary:          0  0%  0%;   /* preto — botões e foco */
+    --primary-foreground: 0 0% 100%;
+
+    --secondary:       48 17% 90%;   /* #EAE8DF — bege médio */
+    --secondary-foreground: 0 0% 0%;
+
+    --muted:           48 17% 90%;
+    --muted-foreground:  0  0% 12%;  /* quase preto — legível em fundo claro */
+
+    --accent:          48 17% 90%;
+    --accent-foreground: 0 0% 0%;
+
+    --destructive:      0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border:          240  6% 90%;  /* zinc-200 */
+    --input:           240  6% 90%;
+    --ring:              0  0%  0%;
+
+    --radius: 0.75rem;
+
+    /* Sidebar */
+    --sidebar-bg:       0  0% 100%;  /* branco */
+    --sidebar-fg:       0  0%  0%;
+    --sidebar-border:  240  6% 90%;
+    --sidebar-active:  48 17% 90%;   /* #EAE8DF */
+  }
+
+  .dark {
+    /* ── DARK MODE — "Carvão Fosco" ────────────────────── */
+    --background:      60  4%  9%;   /* #181816 — preto aquecido */
+    --foreground:      48 20% 95%;   /* #F4F3EF — bege (inverte) */
+
+    --card:            60  3%  9%;   /* #181816 — grafite mais escuro */
+    --card-foreground: 48 20% 95%;
+
+    --popover:         60  3%  9%;
+    --popover-foreground: 48 20% 95%;
+
+    --primary:         48 20% 95%;   /* #F4F3EF — bege (inverte) */
+    --primary-foreground: 0 0% 0%;
+
+    --secondary:       60  6% 16%;   /* #2C2C27 — grafite ativo */
+    --secondary-foreground: 48 20% 95%;
+
+    --muted:           60  6% 16%;
+    --muted-foreground:  0  0% 88%;  /* quase branco — legível em fundo escuro */
+
+    --accent:          60  6% 16%;
+    --accent-foreground: 48 20% 95%;
+
+    --destructive:      0 63% 31%;
+    --destructive-foreground: 48 20% 95%;
+
+    --border:          240  4% 20%;  /* zinc-800 */
+    --input:           240  4% 20%;
+    --ring:            48 20% 95%;
+
+    /* Sidebar */
+    --sidebar-bg:      60  5% 13%;   /* #181816 */
+    --sidebar-fg:      48 20% 95%;
+    --sidebar-border:  240  4% 20%;
+    --sidebar-active:  60  6% 16%;   /* #2C2C27 */
+  }
+}
+
+@layer base {
+  * { @apply border-border; }
+
+  /*
+    Força a fonte em html (não só body) para garantir herança total.
+    font-weight 300 = Light — aplica ao app inteiro por padrão.
+    Elementos com font-medium / font-semibold / font-bold continuam
+    usando seus pesos explícitos.
+  */
+  html {
+    font-family: var(--font-quicksand), system-ui, sans-serif;
+    font-weight: 400;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+@layer utilities {
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--border)) transparent;
+  }
+  .scrollbar-thin::-webkit-scrollbar { width: 5px; }
+  .scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background-color: hsl(var(--border));
+    border-radius: 3px;
+  }
+
+  /* ── Gradiente de fundo ──────────────────────────────────
+     Modo claro: diagonal quente, papel iluminado no topo
+     Modo escuro: fundo profundo com luminância suave no centro-topo
+  */
+  .bg-app {
+    background:
+      radial-gradient(ellipse 200% 80% at 50% -10%, rgba(255,255,255,0.90) 0%, transparent 55%),
+      radial-gradient(ellipse 120% 60% at 100% 100%, rgba(210,200,180,0.40) 0%, transparent 60%),
+      linear-gradient(155deg, #F8F5EC 0%, #EDE8DC 45%, #E0D9CA 100%);
+  }
+  .dark .bg-app {
+    background:
+      radial-gradient(ellipse 180% 60% at 50% -5%, rgba(55,52,45,0.80) 0%, transparent 55%),
+      radial-gradient(ellipse 100% 50% at 0%  100%, rgba(30,28,22,0.60) 0%, transparent 60%),
+      linear-gradient(170deg, #1E1D18 0%, #121210 50%, #090908 100%);
+  }
+
+  /*
+    Forçar texto zinc/gray → foreground do tema.
+    Estas regras ficam no @layer utilities e vêm DEPOIS do @tailwind utilities,
+    então ganham de classes geradas com a mesma especificidade por ordem de fonte.
+    As seletoras .dark .dark\:text-* cobrem as variantes dark: do Tailwind.
+  */
+  .text-zinc-300, .text-zinc-400, .text-zinc-500, .text-zinc-600,
+  .text-gray-400,  .text-gray-500,  .text-gray-600 {
+    color: hsl(var(--foreground));
+  }
+  .dark .text-zinc-300,      .dark .text-zinc-400,      .dark .text-zinc-500,      .dark .text-zinc-600,
+  .dark .dark\:text-zinc-300,.dark .dark\:text-zinc-400,.dark .dark\:text-zinc-500,.dark .dark\:text-zinc-600,
+  .dark .text-gray-400,      .dark .text-gray-500,      .dark .text-gray-600,
+  .dark .dark\:text-gray-400,.dark .dark\:text-gray-500,.dark .dark\:text-gray-600 {
+    color: hsl(var(--foreground));
+  }
+}
+
+/* ── Tiptap Editor ───────────────────────────────────── */
+.tiptap-editor { @apply outline-none min-h-[400px]; }
+.tiptap-editor p         { @apply mb-2; }
+.tiptap-editor h1        { @apply text-2xl font-bold mb-3 mt-5; }
+.tiptap-editor h2        { @apply text-xl font-semibold mb-2 mt-4; }
+.tiptap-editor h3        { @apply text-lg font-semibold mb-2 mt-3; }
+.tiptap-editor ul        { @apply list-disc pl-5 mb-2 space-y-1; }
+.tiptap-editor ol        { @apply list-decimal pl-5 mb-2 space-y-1; }
+.tiptap-editor blockquote{ @apply border-l-4 border-foreground/20 pl-4 italic text-muted-foreground my-3; }
+.tiptap-editor code      { @apply bg-secondary rounded px-1.5 py-0.5 font-mono text-sm; }
+.tiptap-editor pre       { @apply bg-secondary rounded-xl p-4 my-3 overflow-x-auto; }
+.tiptap-editor pre code  { @apply bg-transparent p-0; }
+
+.tiptap-editor ul[data-type="taskList"]         { @apply list-none pl-0; }
+.tiptap-editor ul[data-type="taskList"] li      { @apply flex items-start gap-2; }
+.tiptap-editor ul[data-type="taskList"] li > label { @apply flex-shrink-0 mt-0.5; }
