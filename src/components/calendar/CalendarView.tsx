@@ -267,7 +267,7 @@ export function CalendarView({
                           style={{ ...style, height: Math.min(height, CELL_HEIGHT - 4) }}
                         >
                           <div className="truncate leading-tight">{event.title}</div>
-                          <div className="opacity-60 text-[10px] leading-tight">
+                          <div className="text-[10px] leading-tight">
                             {format(parseISO(event.start_time), 'HH:mm')}–
                             {format(parseISO(event.end_time), 'HH:mm')}
                           </div>

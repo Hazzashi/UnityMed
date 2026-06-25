@@ -12,7 +12,7 @@ import { cn } from '@/lib/utils'
 
 interface TimerDisplayProps {
   subjects: Subject[]
-  userId: string  // CORRIGIDO: necessário para o INSERT em study_sessions
+  userId: string
 }
 
 export function TimerDisplay({ subjects, userId }: TimerDisplayProps) {
@@ -25,27 +25,26 @@ export function TimerDisplay({ subjects, userId }: TimerDisplayProps) {
   const [selectedSubjectId, setSelectedSubjectId] = useState(subjectId ?? '')
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
-  // Ref para evitar múltiplos auto-stops no Pomodoro
+  const [editingMinutes, setEditingMinutes] = useState(false)
+  const [minuteInput, setMinuteInput] = useState('')
+  const minuteInputRef = useRef<HTMLInputElement>(null)
   const isStoppingRef = useRef(false)
 
-  // Tick de 1 segundo enquanto timer corre
   useEffect(() => {
     if (!isRunning) return
     const id = setInterval(() => forceUpdate((n) => n + 1), 1000)
     return () => clearInterval(id)
   }, [isRunning])
 
-  // CORRIGIDO: handleStop declarado antes do useEffect que o usa
   const handleStop = useCallback(async () => {
-    // Captura tudo ANTES de chamar stop() que zera o store
-    const finalElapsed    = getElapsed()
+    const finalElapsed     = getElapsed()
     const currentSubjectId = useTimerStore.getState().subjectId
     const currentMode      = useTimerStore.getState().mode
 
     stop()
     isStoppingRef.current = false
 
-    if (finalElapsed < 5) return  // Sessão muito curta, não salva
+    if (finalElapsed < 5) return
 
     setSaving(true)
     setSaveError(null)
@@ -67,7 +66,6 @@ export function TimerDisplay({ subjects, userId }: TimerDisplayProps) {
     }
   }, [getElapsed, stop, userId])
 
-  // Auto-stop do Pomodoro quando countdown chega a 0
   const elapsed = getElapsed()
   useEffect(() => {
     if (isRunning && mode === 'pomodoro' && elapsed >= pomodoroLength && !isStoppingRef.current) {
@@ -83,6 +81,27 @@ export function TimerDisplay({ subjects, userId }: TimerDisplayProps) {
     start(subject.id, subject.name, subject.color)
   }
 
+  function openMinuteEdit() {
+    if (isRunning || mode !== 'pomodoro') return
+    const currentMinutes = Math.round(pomodoroLength / 60)
+    setMinuteInput(String(currentMinutes))
+    setEditingMinutes(true)
+    setTimeout(() => minuteInputRef.current?.select(), 0)
+  }
+
+  function confirmMinuteEdit() {
+    const parsed = parseInt(minuteInput, 10)
+    if (!isNaN(parsed) && parsed >= 1 && parsed <= 999) {
+      setPomodoroLength(parsed)
+    }
+    setEditingMinutes(false)
+  }
+
+  function handleMinuteKeyDown(e: React.KeyboardEvent) {
+    if (e.key === 'Enter') confirmMinuteEdit()
+    if (e.key === 'Escape') setEditingMinutes(false)
+  }
+
   const displaySeconds = mode === 'pomodoro'
     ? Math.max(0, pomodoroLength - elapsed)
     : elapsed
@@ -91,7 +110,7 @@ export function TimerDisplay({ subjects, userId }: TimerDisplayProps) {
     ? Math.min((elapsed / pomodoroLength) * 100, 100)
     : null
 
-  const radius       = 120
+  const radius        = 120
   const circumference = 2 * Math.PI * radius
   const dashOffset    = progressPercent !== null
     ? circumference * (1 - progressPercent / 100)
@@ -125,7 +144,7 @@ export function TimerDisplay({ subjects, userId }: TimerDisplayProps) {
         </TabsList>
       </Tabs>
 
-      {/* Seletor de duração do Pomodoro */}
+      {/* Botões de duração pré-definida */}
       {mode === 'pomodoro' && !isRunning && (
         <div className="flex gap-2 flex-wrap justify-center">
           {[15, 25, 30, 45, 60].map((min) => (
@@ -156,7 +175,7 @@ export function TimerDisplay({ subjects, userId }: TimerDisplayProps) {
               {subjects.map((s) => (
                 <SelectItem key={s.id} value={s.id}>
                   <div className="flex items-center gap-2">
-                    <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: s.color }} />
+                    <span className="h-2.5 w-2.5 rounded-full shrink-0 bg-[#1E3A5F] dark:bg-[#4A72A8]" />
                     {s.name}
                   </div>
                 </SelectItem>
@@ -174,14 +193,12 @@ export function TimerDisplay({ subjects, userId }: TimerDisplayProps) {
       {/* Círculo do timer */}
       <div className="relative flex items-center justify-center">
         <svg width="280" height="280" className="-rotate-90">
-          {/* Trilha */}
           <circle
             cx="140" cy="140" r={radius}
             fill="none"
             stroke="hsl(var(--secondary))"
             strokeWidth="6"
           />
-          {/* Progresso Pomodoro */}
           {mode === 'pomodoro' && (
             <circle
               cx="140" cy="140" r={radius}
@@ -202,13 +219,41 @@ export function TimerDisplay({ subjects, userId }: TimerDisplayProps) {
               {activeSubject.name}
             </span>
           )}
-          <span className="text-5xl font-bold tabular-nums tracking-tighter text-black dark:text-[#F4F3EF]">
-            {formatSeconds(displaySeconds)}
-          </span>
+
+          {/* Timer display — clicável para editar no modo pomodoro parado */}
+          {editingMinutes ? (
+            <div className="flex items-center gap-1">
+              <input
+                ref={minuteInputRef}
+                type="number"
+                min={1}
+                max={999}
+                value={minuteInput}
+                onChange={(e) => setMinuteInput(e.target.value)}
+                onBlur={confirmMinuteEdit}
+                onKeyDown={handleMinuteKeyDown}
+                className="w-28 text-center text-5xl font-bold tabular-nums tracking-tighter bg-transparent border-b-2 border-[#1E3A5F] dark:border-[#4A72A8] outline-none text-black dark:text-[#F4F3EF] [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+              />
+              <span className="text-2xl font-bold text-black dark:text-[#F4F3EF]">min</span>
+            </div>
+          ) : (
+            <span
+              onClick={openMinuteEdit}
+              className={cn(
+                'text-5xl font-bold tabular-nums tracking-tighter text-black dark:text-[#F4F3EF]',
+                mode === 'pomodoro' && !isRunning && 'cursor-pointer hover:text-[#1E3A5F] dark:hover:text-[#4A72A8] transition-colors'
+              )}
+              title={mode === 'pomodoro' && !isRunning ? 'Clique para editar o tempo' : undefined}
+            >
+              {formatSeconds(displaySeconds)}
+            </span>
+          )}
+
           <span className="text-xs text-zinc-400 dark:text-zinc-500">
             {isRunning
               ? mode === 'pomodoro' ? 'Pomodoro ativo' : 'Cronômetro ativo'
-              : elapsed > 0 ? 'Pausado' : 'Pronto para começar'
+              : elapsed > 0 ? 'Pausado'
+              : mode === 'pomodoro' ? 'Clique no tempo para editar' : 'Pronto para começar'
             }
           </span>
         </div>
@@ -258,7 +303,6 @@ export function TimerDisplay({ subjects, userId }: TimerDisplayProps) {
         )}
       </div>
 
-      {/* Feedback de status */}
       {saving && (
         <p className="text-xs text-zinc-400 dark:text-zinc-500 animate-pulse">Salvando sessão…</p>
       )}
