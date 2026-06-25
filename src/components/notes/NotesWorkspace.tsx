@@ -1,6 +1,7 @@
 'use client'
 import { useState, useCallback, useRef, useEffect } from 'react'
 import dynamic from 'next/dynamic'
+import { useLayoutStore } from '@/store/layoutStore'
 import {
   FolderPlus, FilePlus, ChevronRight, ChevronDown,
   Folder, FileText, BookOpen, X, Loader2,
@@ -45,6 +46,7 @@ export function NotesWorkspace({ initialFolders, initialNotes, subjects, userId 
   const [pdfSignedUrl, setPdfSignedUrl]     = useState<string | null>(null)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const setPdfMode   = useLayoutStore(s => s.setPdfMode)
 
   const selectedNote  = notes.find(n => n.id === selectedNoteId)
   // pdf_url stores the storage PATH (e.g. "userId/noteId.pdf"), not a public URL
@@ -52,16 +54,19 @@ export function NotesWorkspace({ initialFolders, initialNotes, subjects, userId 
 
   // Gera URL assinada (expira em 1h) sempre que a nota selecionada muda
   useEffect(() => {
-    if (!pdfPath) { setPdfSignedUrl(null); return }
+    if (!pdfPath) { setPdfSignedUrl(null); setPdfMode(false); return }
     let cancelled = false
     async function sign() {
       const supabase = createClient()
       const { data, error } = await supabase.storage.from('pdfs').createSignedUrl(pdfPath!, 3600)
-      if (!cancelled && !error && data) setPdfSignedUrl(data.signedUrl)
+      if (!cancelled && !error && data) { setPdfSignedUrl(data.signedUrl); setPdfMode(true) }
     }
     sign()
     return () => { cancelled = true }
-  }, [pdfPath])
+  }, [pdfPath, setPdfMode])
+
+  // Garante que pdfMode é desativado ao sair da aba
+  useEffect(() => () => setPdfMode(false), [setPdfMode])
 
   // ── Folders / Notes CRUD ─────────────────────────────────────────────────────
 
@@ -251,7 +256,7 @@ export function NotesWorkspace({ initialFolders, initialNotes, subjects, userId 
                 ) : (
                   <Button variant="ghost" size="sm" className="h-6 gap-1 text-[11px] text-zinc-400 hover:text-black dark:hover:text-[#F4F3EF] hover:bg-transparent px-1.5" onClick={() => fileInputRef.current?.click()} disabled={uploadingPdf}>
                     {uploadingPdf ? <Loader2 className="h-3 w-3 animate-spin" /> : <BookOpen className="h-3.5 w-3.5" />}
-                    {uploadingPdf ? 'Enviando…' : 'Abrir livro'}
+                    {uploadingPdf ? 'Enviando…' : 'Abrir PDF'}
                   </Button>
                 )}
                 <input ref={fileInputRef} type="file" accept="application/pdf,.pdf" className="hidden" onChange={handlePdfUpload} />

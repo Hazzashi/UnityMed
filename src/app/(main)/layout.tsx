@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { Sidebar } from '@/components/layout/Sidebar'
+import { ContentWrapper } from '@/components/layout/ContentWrapper'
 import type { Database } from '@/types/database'
 
 type ProfileRow = Database['public']['Tables']['profiles']['Row']
@@ -29,14 +30,7 @@ export default async function MainLayout({ children }: { children: React.ReactNo
         Scroll container ocupa toda a largura disponível → scrollbar fica
         colada à borda direita da tela, não no centro do conteúdo.
       */}
-      <div className="flex-1 overflow-y-auto scrollbar-thin min-w-0">
-        {/* Centraliza o conteúdo dentro do scroll container */}
-        <div className="flex min-h-full justify-center">
-          <main className="w-full max-w-[1060px]">
-            {children}
-          </main>
-        </div>
-      </div>
+      <ContentWrapper>{children}</ContentWrapper>
     </div>
   )
 }
