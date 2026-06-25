@@ -44,7 +44,10 @@ export function NotesWorkspace({ initialFolders, initialNotes, subjects, userId 
   const [addingFolder, setAddingFolder]     = useState(false)
   const [uploadingPdf, setUploadingPdf]         = useState(false)
   const [uploadError, setUploadError]           = useState<string | null>(null)
+  const [pdfLocalNotice, setPdfLocalNotice]     = useState<string | null>(null)
   const [pdfSignedUrl, setPdfSignedUrl]         = useState<string | null>(null)
+  // Blob URL de PDFs grandes (session-only, não enviados ao Storage)
+  const localBlobUrlRef = useRef<string | null>(null)
   const [notesSidebarOpen, setNotesSidebarOpen] = useState(true)
   const [editorPct, setEditorPct]               = useState(42)
 
@@ -145,6 +148,23 @@ export function NotesWorkspace({ initialFolders, initialNotes, subjects, userId 
     const file = e.target.files?.[0]
     if (!file || !selectedNoteId) return
     setUploadError(null)
+    setPdfLocalNotice(null)
+
+    const sizeMB = file.size / 1024 / 1024
+    const LIMIT_MB = 50
+
+    // PDF grande: carrega direto da memória, sem upload — sessão apenas
+    if (sizeMB > LIMIT_MB) {
+      if (localBlobUrlRef.current) URL.revokeObjectURL(localBlobUrlRef.current)
+      const blobUrl = URL.createObjectURL(file)
+      localBlobUrlRef.current = blobUrl
+      setPdfSignedUrl(blobUrl)
+      setPdfLocalNotice(`PDF de ${sizeMB.toFixed(0)} MB carregado localmente. As anotações são salvas, mas o PDF precisará ser aberto novamente na próxima sessão.`)
+      e.target.value = ''
+      return
+    }
+
+    // PDF pequeno: envia ao Supabase Storage normalmente
     setUploadingPdf(true)
     try {
       const supabase = createClient()
@@ -154,12 +174,7 @@ export function NotesWorkspace({ initialFolders, initialNotes, subjects, userId 
         .from('pdfs')
         .upload(path, file, { upsert: true, contentType: 'application/pdf' })
       if (storageError) {
-        const msg = storageError.message ?? ''
-        if (msg.toLowerCase().includes('size') || msg.toLowerCase().includes('large')) {
-          setUploadError(`Arquivo muito grande (${(file.size / 1024 / 1024).toFixed(0)} MB). Aumente o limite no Supabase Storage ou use um PDF menor.`)
-        } else {
-          setUploadError(`Erro ao enviar: ${msg}`)
-        }
+        setUploadError(`Erro ao enviar: ${storageError.message}`)
         return
       }
 
@@ -177,12 +192,19 @@ export function NotesWorkspace({ initialFolders, initialNotes, subjects, userId 
   }
 
   async function handleRemovePdf() {
-    if (!selectedNoteId || !pdfPath) return
+    if (!selectedNoteId) return
+    // Revoga blob URL se era PDF local (grande)
+    if (localBlobUrlRef.current) {
+      URL.revokeObjectURL(localBlobUrlRef.current)
+      localBlobUrlRef.current = null
+    }
+    setPdfSignedUrl(null)
+    setPdfLocalNotice(null)
+    if (!pdfPath) return
     const supabase = createClient()
     await supabase.storage.from('pdfs').remove([pdfPath])
     await (supabase as any).from('notes').update({ pdf_url: null }).eq('id', selectedNoteId)
     setNotes(prev => prev.map(n => n.id === selectedNoteId ? { ...n, pdf_url: null } : n))
-    setPdfSignedUrl(null)
   }
 
   // ── Render ───────────────────────────────────────────────────────────────────
@@ -293,7 +315,7 @@ export function NotesWorkspace({ initialFolders, initialNotes, subjects, userId 
           {selectedNoteId ? (
             <>
               <div className="flex items-center justify-end px-3 py-1 border-b border-zinc-200/40 dark:border-zinc-800/40 bg-[#F4F3EF] dark:bg-[#2C2C27] shrink-0">
-                {pdfPath ? (
+                {(pdfPath || pdfSignedUrl) ? (
                   <Button variant="ghost" size="sm" className="h-6 gap-1 text-[11px] text-zinc-400 hover:text-red-500 hover:bg-transparent px-1.5" onClick={handleRemovePdf}>
                     <X className="h-3 w-3" />
                     Fechar livro
@@ -307,6 +329,9 @@ export function NotesWorkspace({ initialFolders, initialNotes, subjects, userId 
                 <input ref={fileInputRef} type="file" accept="application/pdf,.pdf" className="hidden" onChange={handlePdfUpload} />
                 {uploadError && (
                   <p className="text-[10px] text-red-400 leading-tight mt-0.5 max-w-[220px]">{uploadError}</p>
+                )}
+                {pdfLocalNotice && (
+                  <p className="text-[10px] text-blue-400 leading-tight mt-0.5 max-w-[220px]">{pdfLocalNotice}</p>
                 )}
               </div>
 
