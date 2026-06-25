@@ -64,16 +64,17 @@ export function PDFViewer({ pdfUrl, noteId, userId }: PDFViewerProps) {
   // Sinaliza quando a página do PDF terminou de renderizar
   const [pdfRendered, setPdfRendered] = useState(false)
 
-  const containerRef = useRef<HTMLDivElement>(null)
-  const canvasRef    = useRef<HTMLCanvasElement>(null)
-  const isDrawingRef = useRef(false)
-  const strokeRef    = useRef<Stroke | null>(null)
-  // Ref para evitar closure stale no onRenderSuccess do react-pdf
-  const strokesRef   = useRef<Stroke[]>([])
+  const containerRef  = useRef<HTMLDivElement>(null)
+  const canvasRef     = useRef<HTMLCanvasElement>(null)
+  const isDrawingRef  = useRef(false)
+  const strokeRef     = useRef<Stroke | null>(null)
+  const strokesRef    = useRef<Stroke[]>([])
+  const saveTimerRef  = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Impede salvar durante o carregamento inicial da página
+  const loadingRef    = useRef(false)
 
   const activeColor = tool === 'highlighter' ? hlColor : penColor
 
-  // Mantém strokesRef sincronizado sem causar re-renders
   useEffect(() => { strokesRef.current = strokes }, [strokes])
 
   // Reset do estado de renderização ao trocar de página
@@ -83,6 +84,7 @@ export function PDFViewer({ pdfUrl, noteId, userId }: PDFViewerProps) {
 
   useEffect(() => {
     let cancelled = false
+    loadingRef.current = true
     setStrokes([])
     async function load() {
       const supabase = createClient()
@@ -92,11 +94,41 @@ export function PDFViewer({ pdfUrl, noteId, userId }: PDFViewerProps) {
         .eq('note_id', noteId)
         .eq('page_number', currentPage)
       if (error) console.error('[PDF] load error:', error)
-      if (!cancelled) setStrokes((data ?? []).map((r: any) => r.data as Stroke))
+      if (!cancelled) {
+        setStrokes((data ?? []).map((r: any) => r.data as Stroke))
+        loadingRef.current = false
+      }
     }
     load()
     return () => { cancelled = true }
   }, [noteId, currentPage])
+
+  // ── Salva estado completo da página (debounced) ──────────────────────────────
+
+  function scheduleSave(strokesToSave: Stroke[]) {
+    if (loadingRef.current) return // não salva durante carregamento
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+    saveTimerRef.current = setTimeout(() => {
+      void savePageStrokes(strokesToSave)
+    }, 600)
+  }
+
+  async function savePageStrokes(strokesToSave: Stroke[]) {
+    const supabase = createClient()
+    const { error: delErr } = await (supabase as any)
+      .from('pdf_annotations')
+      .delete()
+      .eq('note_id', noteId)
+      .eq('page_number', currentPage)
+    if (delErr) { console.error('[PDF] delete error:', delErr); return }
+    if (strokesToSave.length === 0) return
+    const { error: insErr } = await (supabase as any)
+      .from('pdf_annotations')
+      .insert(strokesToSave.map(s => ({
+        note_id: noteId, user_id: userId, page_number: currentPage, type: 'stroke', data: s,
+      })))
+    if (insErr) console.error('[PDF] insert error:', insErr)
+  }
 
   // ── Redraw quando strokes mudam E página já renderizou ──────────────────────
   // Garante que se os strokes carregarem DEPOIS do onRenderSuccess, ainda são desenhados
@@ -221,50 +253,35 @@ export function PDFViewer({ pdfUrl, noteId, userId }: PDFViewerProps) {
     const s = strokeRef.current
     strokeRef.current = null
     if (s.points.length < 2) return
-    setStrokes(prev => [...prev, s])
+    const next = [...strokesRef.current, s]
+    setStrokes(next)
     setRedoStack([])
-    void saveStroke(s)
-  }
-
-  async function saveStroke(s: Stroke) {
-    const supabase = createClient()
-    const { error } = await (supabase as any).from('pdf_annotations').insert({
-      note_id: noteId, user_id: userId, page_number: currentPage, type: 'stroke', data: s,
-    })
-    if (error) console.error('[PDF] save stroke error:', error)
+    scheduleSave(next)
   }
 
   // ── Undo ─────────────────────────────────────────────────────────────────────
 
-  async function handleUndo() {
+  function handleUndo() {
     if (strokes.length === 0) return
     const last = strokes[strokes.length - 1]
-    setStrokes(prev => prev.slice(0, -1))
+    const next = strokes.slice(0, -1)
+    setStrokes(next)
     setRedoStack(prev => [...prev, last])
-    const supabase = createClient()
-    const { data: rows } = await supabase
-      .from('pdf_annotations').select('id, data')
-      .eq('note_id', noteId).eq('page_number', currentPage)
-    const row = (rows ?? []).find((r: any) => (r.data as Stroke).id === last.id)
-    if (row) await (supabase as any).from('pdf_annotations').delete().eq('id', (row as any).id)
+    scheduleSave(next)
   }
 
-  async function handleRedo() {
+  function handleRedo() {
     if (redoStack.length === 0) return
-    const next = redoStack[redoStack.length - 1]
+    const nextStroke = redoStack[redoStack.length - 1]
+    const next = [...strokes, nextStroke]
     setRedoStack(prev => prev.slice(0, -1))
-    setStrokes(prev => [...prev, next])
-    const supabase = createClient()
-    await (supabase as any).from('pdf_annotations').insert({
-      note_id: noteId, user_id: userId, page_number: currentPage, type: 'stroke', data: next,
-    })
+    setStrokes(next)
+    scheduleSave(next)
   }
 
-  async function handleClearPage() {
+  function handleClearPage() {
     setStrokes([])
-    const supabase = createClient()
-    await (supabase as any).from('pdf_annotations').delete()
-      .eq('note_id', noteId).eq('page_number', currentPage)
+    scheduleSave([])
   }
 
   // ── Export ────────────────────────────────────────────────────────────────────
