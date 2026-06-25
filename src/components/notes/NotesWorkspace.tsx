@@ -58,6 +58,7 @@ export function NotesWorkspace({ initialFolders, initialNotes, subjects, userId 
     // setPointerCapture garante que pointermove/pointerup chegam mesmo fora do elemento
     e.currentTarget.setPointerCapture(e.pointerId)
     function onMove(ev: PointerEvent) {
+      if (!el) return
       const rect = el.getBoundingClientRect()
       const pct  = ((ev.clientX - rect.left) / rect.width) * 100
       setEditorPct(Math.max(20, Math.min(75, pct)))
