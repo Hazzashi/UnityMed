@@ -49,7 +49,8 @@ export function Sidebar({ userName, userCourse, userSemester }: SidebarProps) {
       <aside
         className={cn(
           'flex h-full flex-col',
-          'rounded-[22px] bg-white dark:bg-[#181816]',
+          pdfMode ? 'rounded-none' : 'rounded-[22px]',
+          'bg-white dark:bg-[#181816]',
           'border border-zinc-200/40 dark:border-zinc-800/40 shadow-sm',
           'transition-all duration-300 ease-in-out overflow-hidden',
           isCollapsed ? 'w-[64px]' : 'w-[240px]'
