@@ -28,7 +28,9 @@ export default function LoginPage() {
         setError(signInError.message || JSON.stringify(signInError) || 'Erro ao entrar.')
         setLoading(false); return
       }
+      router.refresh()
       router.push('/dashboard')
+      return
     } else {
       const { data, error: signUpError } = await supabase.auth.signUp({
         email, password,
@@ -39,7 +41,9 @@ export default function LoginPage() {
         setLoading(false); return
       }
       if (data.session) {
+        router.refresh()
         router.push('/dashboard')
+        return
       } else {
         setMessage('Conta criada! Verifique seu e-mail para confirmar.')
       }

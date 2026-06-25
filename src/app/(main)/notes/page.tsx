@@ -14,7 +14,7 @@ export default async function NotesPage() {
 
   const [foldersRes, notesRes, subjectsRes] = await Promise.all([
     supabase.from('note_folders').select('*').eq('user_id', user.id).order('name'),
-    supabase.from('notes').select('id, title, folder_id, subject_id, updated_at').eq('user_id', user.id).order('updated_at', { ascending: false }),
+    supabase.from('notes').select('id, title, folder_id, subject_id, updated_at, pdf_url').eq('user_id', user.id).order('updated_at', { ascending: false }),
     supabase.from('subjects').select('id, name, color').eq('user_id', user.id).order('name'),
   ])
 

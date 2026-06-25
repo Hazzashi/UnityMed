@@ -155,6 +155,7 @@ export type Database = {
           folder_id: string | null
           title: string
           content: Json
+          pdf_url: string | null
           created_at: string
           updated_at: string
         }
@@ -165,6 +166,7 @@ export type Database = {
           folder_id?: string | null
           title: string
           content?: Json
+          pdf_url?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -175,6 +177,35 @@ export type Database = {
           folder_id?: string | null
           title?: string
           content?: Json
+          pdf_url?: string | null
+        }
+      }
+      pdf_annotations: {
+        Row: {
+          id: string
+          note_id: string
+          user_id: string
+          page_number: number
+          type: string
+          data: Json
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          note_id: string
+          user_id: string
+          page_number: number
+          type: string
+          data: Json
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          note_id?: string
+          user_id?: string
+          page_number?: number
+          type?: string
+          data?: Json
         }
       }
       glossary: {
