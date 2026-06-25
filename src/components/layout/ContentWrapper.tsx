@@ -7,10 +7,10 @@ export function ContentWrapper({ children }: { children: React.ReactNode }) {
   return (
     <div className={cn(
       'flex-1 min-w-0',
-      pdfMode ? 'overflow-hidden' : 'overflow-y-auto scrollbar-thin'
+      pdfMode ? 'overflow-hidden h-full' : 'overflow-y-auto scrollbar-thin'
     )}>
       <div className={cn('flex min-h-full justify-center', pdfMode && 'h-full')}>
-        <main className={cn('w-full', !pdfMode && 'max-w-[1060px]')}>
+        <main className={cn('w-full', !pdfMode && 'max-w-[1060px]', pdfMode && 'h-full')}>
           {children}
         </main>
       </div>
