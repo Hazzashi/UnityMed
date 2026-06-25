@@ -65,20 +65,27 @@ export function PDFViewer({ pdfUrl, noteId, userId }: PDFViewerProps) {
   const canvasRef    = useRef<HTMLCanvasElement>(null)
   const isDrawingRef = useRef(false)
   const strokeRef    = useRef<Stroke | null>(null)
+  // Ref para evitar closure stale no onRenderSuccess do react-pdf
+  const strokesRef   = useRef<Stroke[]>([])
 
   const activeColor = tool === 'highlighter' ? hlColor : penColor
+
+  // Mantém strokesRef sincronizado sem causar re-renders
+  useEffect(() => { strokesRef.current = strokes }, [strokes])
 
   // ── Load annotations on page change ─────────────────────────────────────────
 
   useEffect(() => {
     let cancelled = false
+    setStrokes([]) // limpa imediatamente ao trocar de página
     async function load() {
       const supabase = createClient()
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('pdf_annotations')
         .select('data')
         .eq('note_id', noteId)
         .eq('page_number', currentPage)
+      if (error) console.error('[PDF] load error:', error)
       if (!cancelled) setStrokes((data ?? []).map((r: any) => r.data as Stroke))
     }
     load()
@@ -154,6 +161,8 @@ export function PDFViewer({ pdfUrl, noteId, userId }: PDFViewerProps) {
   }
 
   function onPointerDown(e: React.PointerEvent) {
+    // Dedo → deixa o browser rolar o PDF, não desenha
+    if (e.pointerType === 'touch') return
     e.preventDefault()
     canvasRef.current?.setPointerCapture(e.pointerId)
     isDrawingRef.current = true
@@ -211,9 +220,10 @@ export function PDFViewer({ pdfUrl, noteId, userId }: PDFViewerProps) {
 
   async function saveStroke(s: Stroke) {
     const supabase = createClient()
-    await (supabase as any).from('pdf_annotations').insert({
+    const { error } = await (supabase as any).from('pdf_annotations').insert({
       note_id: noteId, user_id: userId, page_number: currentPage, type: 'stroke', data: s,
     })
+    if (error) console.error('[PDF] save stroke error:', error)
   }
 
   // ── Undo ─────────────────────────────────────────────────────────────────────
@@ -445,14 +455,14 @@ export function PDFViewer({ pdfUrl, noteId, userId }: PDFViewerProps) {
               renderAnnotationLayer={false}
               onRenderSuccess={() => {
                 const overlay = syncCanvas()
-                if (overlay) drawAll(overlay, strokes)
+                if (overlay) drawAll(overlay, strokesRef.current)
               }}
             />
           </Document>
           <canvas
             ref={canvasRef}
             className="absolute inset-0"
-            style={{ touchAction: 'none', cursor: tool === 'eraser' ? 'cell' : 'crosshair' }}
+            style={{ touchAction: 'pan-x pan-y', cursor: tool === 'eraser' ? 'cell' : 'crosshair' }}
             onPointerDown={onPointerDown}
             onPointerMove={onPointerMove}
             onPointerUp={onPointerUp}

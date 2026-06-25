@@ -51,22 +51,23 @@ export function NotesWorkspace({ initialFolders, initialNotes, subjects, userId 
   const splitContainerRef = useRef<HTMLDivElement>(null)
   const setPdfMode        = useLayoutStore(s => s.setPdfMode)
 
-  function onDividerMouseDown(e: React.MouseEvent) {
+  function onDividerPointerDown(e: React.PointerEvent<HTMLDivElement>) {
     e.preventDefault()
-    const container = splitContainerRef.current
-    if (!container) return
-    const el = container
-    function onMove(ev: MouseEvent) {
+    const el = splitContainerRef.current
+    if (!el) return
+    // setPointerCapture garante que pointermove/pointerup chegam mesmo fora do elemento
+    e.currentTarget.setPointerCapture(e.pointerId)
+    function onMove(ev: PointerEvent) {
       const rect = el.getBoundingClientRect()
       const pct  = ((ev.clientX - rect.left) / rect.width) * 100
       setEditorPct(Math.max(20, Math.min(75, pct)))
     }
     function onUp() {
-      document.removeEventListener('mousemove', onMove)
-      document.removeEventListener('mouseup', onUp)
+      document.removeEventListener('pointermove', onMove)
+      document.removeEventListener('pointerup', onUp)
     }
-    document.addEventListener('mousemove', onMove)
-    document.addEventListener('mouseup', onUp)
+    document.addEventListener('pointermove', onMove)
+    document.addEventListener('pointerup', onUp)
   }
 
   const selectedNote  = notes.find(n => n.id === selectedNoteId)
@@ -317,7 +318,7 @@ export function NotesWorkspace({ initialFolders, initialNotes, subjects, userId 
         {/* Divisor arrastável */}
         {pdfSignedUrl && (
           <div
-            onMouseDown={onDividerMouseDown}
+            onPointerDown={onDividerPointerDown}
             className="w-1 shrink-0 bg-zinc-200/60 dark:bg-zinc-700/60 hover:bg-[#1E3A5F] dark:hover:bg-[#4A72A8] cursor-col-resize transition-colors"
             title="Arraste para redimensionar"
           />

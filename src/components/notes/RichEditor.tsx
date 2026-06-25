@@ -11,7 +11,7 @@ import {
 import { createClient } from '@/lib/supabase/client'
 import type { Note } from '@/types'
 import { Input } from '@/components/ui/input'
-import { ScrollArea } from '@/components/ui/scroll-area'
+
 import { cn } from '@/lib/utils'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
@@ -193,8 +193,8 @@ export function RichEditor({ noteId, userId, onTitleChange }: RichEditorProps) {
         </div>
       </div>
 
-      <ScrollArea className="flex-1">
-        <div className="max-w-3xl mx-auto px-8 py-8">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden scrollbar-thin">
+        <div className="w-full max-w-3xl mx-auto px-8 py-8">
           <Input
             value={title}
             onChange={(e) => setTitle(e.target.value)}
@@ -204,7 +204,7 @@ export function RichEditor({ noteId, userId, onTitleChange }: RichEditorProps) {
           />
           <EditorContent editor={editor} />
         </div>
-      </ScrollArea>
+      </div>
     </div>
   )
 }

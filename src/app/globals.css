@@ -148,7 +148,7 @@
 }
 
 /* ── Tiptap Editor ───────────────────────────────────── */
-.tiptap-editor { @apply outline-none min-h-[400px]; }
+.tiptap-editor { @apply outline-none min-h-[400px] w-full; overflow-wrap: break-word; word-break: break-word; }
 .tiptap-editor p         { @apply mb-2; }
 .tiptap-editor h1        { @apply text-2xl font-bold mb-3 mt-5; }
 .tiptap-editor h2        { @apply text-xl font-semibold mb-2 mt-4; }
