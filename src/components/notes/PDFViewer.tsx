@@ -64,14 +64,17 @@ export function PDFViewer({ pdfUrl, noteId, userId }: PDFViewerProps) {
   // Sinaliza quando a página do PDF terminou de renderizar
   const [pdfRendered, setPdfRendered] = useState(false)
 
-  const containerRef  = useRef<HTMLDivElement>(null)
-  const canvasRef     = useRef<HTMLCanvasElement>(null)
-  const isDrawingRef  = useRef(false)
-  const strokeRef     = useRef<Stroke | null>(null)
-  const strokesRef    = useRef<Stroke[]>([])
-  const saveTimerRef  = useRef<ReturnType<typeof setTimeout> | null>(null)
-  // Impede salvar durante o carregamento inicial da página
-  const loadingRef    = useRef(false)
+  const containerRef   = useRef<HTMLDivElement>(null)
+  const canvasRef      = useRef<HTMLCanvasElement>(null)
+  const isDrawingRef   = useRef(false)
+  const strokeRef      = useRef<Stroke | null>(null)
+  const strokesRef     = useRef<Stroke[]>([])
+  const saveTimerRef   = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const loadingRef     = useRef(false)
+  // Promise do save em andamento — o load aguarda antes de buscar
+  const pendingSaveRef = useRef<Promise<unknown> | null>(null)
+  // Indica se o usuário fez alguma alteração nesta página
+  const isDirtyRef     = useRef(false)
 
   const activeColor = tool === 'highlighter' ? hlColor : penColor
 
@@ -80,13 +83,55 @@ export function PDFViewer({ pdfUrl, noteId, userId }: PDFViewerProps) {
   // Reset do estado de renderização ao trocar de página
   useEffect(() => { setPdfRendered(false) }, [currentPage])
 
+  // ── Salva anotações de uma página (parâmetros explícitos — sem closure) ──────
+
+  async function saveAnnotationsNow(nId: string, uId: string, pageNum: number, strokesToSave: Stroke[]) {
+    const supabase = createClient()
+    const { error: delErr } = await (supabase as any).from('pdf_annotations').delete()
+      .eq('note_id', nId).eq('page_number', pageNum)
+    if (delErr) { console.error('[PDF] delete error:', delErr); return }
+    if (strokesToSave.length === 0) return
+    const { error: insErr } = await (supabase as any).from('pdf_annotations').insert(
+      strokesToSave.map(s => ({ note_id: nId, user_id: uId, page_number: pageNum, type: 'stroke', data: s }))
+    )
+    if (insErr) console.error('[PDF] insert error:', insErr)
+  }
+
+  // Dispara um save imediato e registra a promise para o próximo load aguardar
+  function triggerSave(nId: string, uId: string, pageNum: number, strokesToSave: Stroke[]) {
+    // .catch garante que a promise sempre resolve — evita que o loadPage lance exceção no await
+    const p = saveAnnotationsNow(nId, uId, pageNum, strokesToSave)
+      .catch(err => console.error('[PDF] save error:', err))
+    pendingSaveRef.current = p
+    void p.finally(() => { if (pendingSaveRef.current === p) pendingSaveRef.current = null })
+  }
+
+  // Debounce de 600ms; ao chamar também marca a página como modificada
+  function scheduleSave(strokesToSave: Stroke[]) {
+    isDirtyRef.current = true
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+    // Captura tudo que precisa no momento da chamada — sem depender de closure do render
+    const snap = { nId: noteId, uId: userId, pg: currentPage, strokes: strokesToSave }
+    saveTimerRef.current = setTimeout(() => {
+      saveTimerRef.current = null
+      triggerSave(snap.nId, snap.uId, snap.pg, snap.strokes)
+    }, 600)
+  }
+
   // ── Load annotations on page change ─────────────────────────────────────────
 
   useEffect(() => {
     let cancelled = false
-    loadingRef.current = true
-    setStrokes([])
-    async function load() {
+    isDirtyRef.current = false // nova página — resetar flag de modificação
+
+    async function loadPage() {
+      // Aguarda qualquer save em andamento para evitar race condition
+      if (pendingSaveRef.current) await pendingSaveRef.current
+      if (cancelled) return
+
+      loadingRef.current = true
+      setStrokes([])
+
       const supabase = createClient()
       const { data, error } = await supabase
         .from('pdf_annotations')
@@ -99,36 +144,17 @@ export function PDFViewer({ pdfUrl, noteId, userId }: PDFViewerProps) {
         loadingRef.current = false
       }
     }
-    load()
-    return () => { cancelled = true }
+    loadPage()
+
+    return () => {
+      cancelled = true
+      // Ao sair da página: cancela debounce e salva imediatamente se houve modificações
+      if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null }
+      if (isDirtyRef.current && !loadingRef.current) {
+        triggerSave(noteId, userId, currentPage, strokesRef.current)
+      }
+    }
   }, [noteId, currentPage])
-
-  // ── Salva estado completo da página (debounced) ──────────────────────────────
-
-  function scheduleSave(strokesToSave: Stroke[]) {
-    if (loadingRef.current) return // não salva durante carregamento
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
-    saveTimerRef.current = setTimeout(() => {
-      void savePageStrokes(strokesToSave)
-    }, 600)
-  }
-
-  async function savePageStrokes(strokesToSave: Stroke[]) {
-    const supabase = createClient()
-    const { error: delErr } = await (supabase as any)
-      .from('pdf_annotations')
-      .delete()
-      .eq('note_id', noteId)
-      .eq('page_number', currentPage)
-    if (delErr) { console.error('[PDF] delete error:', delErr); return }
-    if (strokesToSave.length === 0) return
-    const { error: insErr } = await (supabase as any)
-      .from('pdf_annotations')
-      .insert(strokesToSave.map(s => ({
-        note_id: noteId, user_id: userId, page_number: currentPage, type: 'stroke', data: s,
-      })))
-    if (insErr) console.error('[PDF] insert error:', insErr)
-  }
 
   // ── Redraw quando strokes mudam E página já renderizou ──────────────────────
   // Garante que se os strokes carregarem DEPOIS do onRenderSuccess, ainda são desenhados
