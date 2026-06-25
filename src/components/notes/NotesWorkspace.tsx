@@ -3,7 +3,7 @@ import { useState, useCallback, useRef, useEffect } from 'react'
 import dynamic from 'next/dynamic'
 import { useLayoutStore } from '@/store/layoutStore'
 import {
-  FolderPlus, FilePlus, ChevronRight, ChevronDown,
+  FolderPlus, FilePlus, ChevronRight, ChevronDown, ChevronLeft,
   Folder, FileText, BookOpen, X, Loader2,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
@@ -42,11 +42,32 @@ export function NotesWorkspace({ initialFolders, initialNotes, subjects, userId 
   const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null)
   const [newFolderName, setNewFolderName]   = useState('')
   const [addingFolder, setAddingFolder]     = useState(false)
-  const [uploadingPdf, setUploadingPdf]     = useState(false)
-  const [pdfSignedUrl, setPdfSignedUrl]     = useState<string | null>(null)
+  const [uploadingPdf, setUploadingPdf]         = useState(false)
+  const [pdfSignedUrl, setPdfSignedUrl]         = useState<string | null>(null)
+  const [notesSidebarOpen, setNotesSidebarOpen] = useState(true)
+  const [editorPct, setEditorPct]               = useState(42)
 
-  const fileInputRef = useRef<HTMLInputElement>(null)
-  const setPdfMode   = useLayoutStore(s => s.setPdfMode)
+  const fileInputRef     = useRef<HTMLInputElement>(null)
+  const splitContainerRef = useRef<HTMLDivElement>(null)
+  const setPdfMode        = useLayoutStore(s => s.setPdfMode)
+
+  function onDividerMouseDown(e: React.MouseEvent) {
+    e.preventDefault()
+    const container = splitContainerRef.current
+    if (!container) return
+    const el = container
+    function onMove(ev: MouseEvent) {
+      const rect = el.getBoundingClientRect()
+      const pct  = ((ev.clientX - rect.left) / rect.width) * 100
+      setEditorPct(Math.max(20, Math.min(75, pct)))
+    }
+    function onUp() {
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+    }
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
+  }
 
   const selectedNote  = notes.find(n => n.id === selectedNoteId)
   // pdf_url stores the storage PATH (e.g. "userId/noteId.pdf"), not a public URL
@@ -159,10 +180,13 @@ export function NotesWorkspace({ initialFolders, initialNotes, subjects, userId 
   const unfiledNotes = notes.filter(n => !n.folder_id)
 
   return (
-    <div className="flex h-[calc(100vh-24px)] overflow-hidden rounded-[22px] bg-white dark:bg-[#181816] border border-zinc-200/40 dark:border-zinc-800/40">
+    <div className="relative flex h-[calc(100vh-24px)] overflow-hidden rounded-[22px] bg-white dark:bg-[#181816] border border-zinc-200/40 dark:border-zinc-800/40">
 
       {/* ── Sidebar de pastas/notas ── */}
-      <aside className="w-[240px] shrink-0 flex flex-col border-r border-zinc-200/40 dark:border-zinc-800/40">
+      <aside className={cn(
+        'shrink-0 flex flex-col border-r border-zinc-200/40 dark:border-zinc-800/40 transition-[width] duration-200 overflow-hidden',
+        notesSidebarOpen ? 'w-[240px]' : 'w-0 border-r-0'
+      )}>
         <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-200/40 dark:border-zinc-800/40">
           <span className="text-sm font-semibold text-black dark:text-[#F4F3EF]">Cadernos</span>
           <div className="flex gap-1">
@@ -235,16 +259,27 @@ export function NotesWorkspace({ initialFolders, initialNotes, subjects, userId 
         </ScrollArea>
       </aside>
 
+      {/* ── Toggle da sidebar de notas ── */}
+      <button
+        onClick={() => setNotesSidebarOpen(v => !v)}
+        className="absolute top-1/2 -translate-y-1/2 z-20 flex items-center justify-center h-10 w-4 bg-[#F4F3EF] dark:bg-[#2C2C27] border border-zinc-200/40 dark:border-zinc-800/40 rounded-r-lg shadow-sm hover:bg-[#EAE8DF] dark:hover:bg-[#333330] transition-all duration-200"
+        style={{ left: notesSidebarOpen ? 240 : 0, transition: 'left 200ms ease-in-out' }}
+        title={notesSidebarOpen ? 'Fechar painel' : 'Abrir painel'}
+      >
+        {notesSidebarOpen
+          ? <ChevronLeft className="h-3 w-3 text-zinc-500" />
+          : <ChevronRight className="h-3 w-3 text-zinc-500" />
+        }
+      </button>
+
       {/* ── Área principal (editor + PDF) ── */}
-      <div className="flex flex-1 overflow-hidden min-w-0">
+      <div ref={splitContainerRef} className="flex flex-1 overflow-hidden min-w-0">
 
         {/* Painel do editor */}
-        <div className={cn(
-          'flex flex-col overflow-hidden',
-          pdfSignedUrl
-            ? 'w-[42%] border-r border-zinc-200/40 dark:border-zinc-800/40'
-            : 'flex-1'
-        )}>
+        <div
+          className="flex flex-col overflow-hidden shrink-0"
+          style={{ width: pdfSignedUrl ? `${editorPct}%` : '100%' }}
+        >
           {selectedNoteId ? (
             <>
               <div className="flex items-center justify-end px-3 py-1 border-b border-zinc-200/40 dark:border-zinc-800/40 bg-[#F4F3EF] dark:bg-[#2C2C27] shrink-0">
@@ -278,6 +313,15 @@ export function NotesWorkspace({ initialFolders, initialNotes, subjects, userId 
             </div>
           )}
         </div>
+
+        {/* Divisor arrastável */}
+        {pdfSignedUrl && (
+          <div
+            onMouseDown={onDividerMouseDown}
+            className="w-1 shrink-0 bg-zinc-200/60 dark:bg-zinc-700/60 hover:bg-[#1E3A5F] dark:hover:bg-[#4A72A8] cursor-col-resize transition-colors"
+            title="Arraste para redimensionar"
+          />
+        )}
 
         {/* Painel do PDF */}
         {pdfSignedUrl && selectedNoteId && (

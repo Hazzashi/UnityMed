@@ -5,7 +5,7 @@ import 'react-pdf/dist/Page/AnnotationLayer.css'
 import 'react-pdf/dist/Page/TextLayer.css'
 import {
   ChevronLeft, ChevronRight, ZoomIn, ZoomOut,
-  Pencil, Highlighter, Eraser, RotateCcw,
+  Pencil, Highlighter, Eraser, RotateCcw, RotateCw,
   Trash2, Download, Loader2,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
@@ -58,6 +58,7 @@ export function PDFViewer({ pdfUrl, noteId, userId }: PDFViewerProps) {
   const [hlColor, setHlColor]         = useState('#FDE047')
   const [strokeWidth, setStrokeWidth] = useState(2)
   const [strokes, setStrokes]         = useState<Stroke[]>([])
+  const [redoStack, setRedoStack]     = useState<Stroke[]>([])
   const [exporting, setExporting]     = useState(false)
 
   const containerRef = useRef<HTMLDivElement>(null)
@@ -204,6 +205,7 @@ export function PDFViewer({ pdfUrl, noteId, userId }: PDFViewerProps) {
     strokeRef.current = null
     if (s.points.length < 2) return
     setStrokes(prev => [...prev, s])
+    setRedoStack([])
     void saveStroke(s)
   }
 
@@ -220,12 +222,24 @@ export function PDFViewer({ pdfUrl, noteId, userId }: PDFViewerProps) {
     if (strokes.length === 0) return
     const last = strokes[strokes.length - 1]
     setStrokes(prev => prev.slice(0, -1))
+    setRedoStack(prev => [...prev, last])
     const supabase = createClient()
     const { data: rows } = await supabase
       .from('pdf_annotations').select('id, data')
       .eq('note_id', noteId).eq('page_number', currentPage)
     const row = (rows ?? []).find((r: any) => (r.data as Stroke).id === last.id)
     if (row) await (supabase as any).from('pdf_annotations').delete().eq('id', (row as any).id)
+  }
+
+  async function handleRedo() {
+    if (redoStack.length === 0) return
+    const next = redoStack[redoStack.length - 1]
+    setRedoStack(prev => prev.slice(0, -1))
+    setStrokes(prev => [...prev, next])
+    const supabase = createClient()
+    await (supabase as any).from('pdf_annotations').insert({
+      note_id: noteId, user_id: userId, page_number: currentPage, type: 'stroke', data: next,
+    })
   }
 
   async function handleClearPage() {
@@ -344,33 +358,34 @@ export function PDFViewer({ pdfUrl, noteId, userId }: PDFViewerProps) {
           </div>
         )}
 
-        {/* Stroke width */}
-        {tool !== 'eraser' && (
-          <div className="flex items-center gap-0.5">
-            {WIDTHS.map(({ value, label }) => (
-              <button
-                key={value} title={label} onClick={() => setStrokeWidth(value)}
-                className={cn(
-                  'flex items-center justify-center h-7 w-7 rounded-md transition-colors',
-                  strokeWidth === value
-                    ? 'bg-[#EAE8DF] dark:bg-[#2C2C27]'
-                    : 'hover:bg-[#F4F3EF] dark:hover:bg-[#2C2C27]'
-                )}
-              >
-                <div
-                  className="rounded-full bg-zinc-600 dark:bg-zinc-300"
-                  style={{ width: value + 3, height: value + 3 }}
-                />
-              </button>
-            ))}
-          </div>
-        )}
+        {/* Stroke width (all tools including eraser) */}
+        <div className="flex items-center gap-0.5">
+          {WIDTHS.map(({ value, label }) => (
+            <button
+              key={value} title={label} onClick={() => setStrokeWidth(value)}
+              className={cn(
+                'flex items-center justify-center h-7 w-7 rounded-md transition-colors',
+                strokeWidth === value
+                  ? 'bg-[#EAE8DF] dark:bg-[#2C2C27]'
+                  : 'hover:bg-[#F4F3EF] dark:hover:bg-[#2C2C27]'
+              )}
+            >
+              <div
+                className={cn('rounded-full', tool === 'eraser' ? 'bg-zinc-400 border border-zinc-400' : 'bg-zinc-600 dark:bg-zinc-300')}
+                style={{ width: value + 3, height: value + 3 }}
+              />
+            </button>
+          ))}
+        </div>
 
         <div className="w-px h-5 bg-zinc-200/60 dark:bg-zinc-700/60 mx-0.5" />
 
-        {/* Undo / Clear */}
-        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleUndo} title="Desfazer (Ctrl+Z)" disabled={strokes.length === 0}>
+        {/* Undo / Redo / Clear */}
+        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleUndo} title="Desfazer" disabled={strokes.length === 0}>
           <RotateCcw className="h-3.5 w-3.5" />
+        </Button>
+        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleRedo} title="Refazer" disabled={redoStack.length === 0}>
+          <RotateCw className="h-3.5 w-3.5" />
         </Button>
         <Button variant="ghost" size="icon" className="h-7 w-7 text-red-400 hover:text-red-500" onClick={handleClearPage} title="Limpar página" disabled={strokes.length === 0}>
           <Trash2 className="h-3.5 w-3.5" />
