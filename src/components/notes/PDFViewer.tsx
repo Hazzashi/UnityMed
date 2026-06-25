@@ -60,6 +60,9 @@ export function PDFViewer({ pdfUrl, noteId, userId }: PDFViewerProps) {
   const [strokes, setStrokes]         = useState<Stroke[]>([])
   const [redoStack, setRedoStack]     = useState<Stroke[]>([])
   const [exporting, setExporting]     = useState(false)
+  const [pdfError, setPdfError]       = useState<string | null>(null)
+  // Sinaliza quando a página do PDF terminou de renderizar
+  const [pdfRendered, setPdfRendered] = useState(false)
 
   const containerRef = useRef<HTMLDivElement>(null)
   const canvasRef    = useRef<HTMLCanvasElement>(null)
@@ -73,11 +76,14 @@ export function PDFViewer({ pdfUrl, noteId, userId }: PDFViewerProps) {
   // Mantém strokesRef sincronizado sem causar re-renders
   useEffect(() => { strokesRef.current = strokes }, [strokes])
 
+  // Reset do estado de renderização ao trocar de página
+  useEffect(() => { setPdfRendered(false) }, [currentPage])
+
   // ── Load annotations on page change ─────────────────────────────────────────
 
   useEffect(() => {
     let cancelled = false
-    setStrokes([]) // limpa imediatamente ao trocar de página
+    setStrokes([])
     async function load() {
       const supabase = createClient()
       const { data, error } = await supabase
@@ -92,13 +98,15 @@ export function PDFViewer({ pdfUrl, noteId, userId }: PDFViewerProps) {
     return () => { cancelled = true }
   }, [noteId, currentPage])
 
-  // ── Redraw when strokes change ───────────────────────────────────────────────
+  // ── Redraw quando strokes mudam E página já renderizou ──────────────────────
+  // Garante que se os strokes carregarem DEPOIS do onRenderSuccess, ainda são desenhados
 
   useEffect(() => {
+    if (!pdfRendered) return
     const overlay = syncCanvas()
     if (!overlay) return
     drawAll(overlay, strokes)
-  }, [strokes])
+  }, [strokes, pdfRendered])
 
   // ── Canvas sync ──────────────────────────────────────────────────────────────
 
@@ -438,10 +446,20 @@ export function PDFViewer({ pdfUrl, noteId, userId }: PDFViewerProps) {
 
       {/* ── PDF + Canvas ── */}
       <div className="flex-1 overflow-auto flex justify-center p-4 bg-[#F4F3EF] dark:bg-[#222220]">
+        {pdfError && (
+          <div className="flex flex-col items-center justify-center gap-3 text-center p-8">
+            <p className="text-sm font-medium text-red-500">{pdfError}</p>
+            <p className="text-xs text-zinc-400 dark:text-zinc-500">
+              Tente um arquivo menor ou verifique se o PDF não está corrompido.
+            </p>
+          </div>
+        )}
+        {!pdfError && (
         <div ref={containerRef} className="relative inline-block shadow-xl">
           <Document
             file={pdfUrl}
-            onLoadSuccess={({ numPages: n }) => { setNumPages(n); setCurrentPage(1) }}
+            onLoadSuccess={({ numPages: n }) => { setNumPages(n); setCurrentPage(1); setPdfError(null) }}
+            onLoadError={() => setPdfError('Não foi possível carregar o PDF. O arquivo pode ser muito grande ou estar corrompido.')}
             loading={
               <div className="flex items-center justify-center bg-white dark:bg-[#181816]" style={{ width: 595, height: 842 }}>
                 <Loader2 className="h-8 w-8 animate-spin text-zinc-300" />
@@ -456,6 +474,7 @@ export function PDFViewer({ pdfUrl, noteId, userId }: PDFViewerProps) {
               onRenderSuccess={() => {
                 const overlay = syncCanvas()
                 if (overlay) drawAll(overlay, strokesRef.current)
+                setPdfRendered(true)
               }}
             />
           </Document>
@@ -469,6 +488,7 @@ export function PDFViewer({ pdfUrl, noteId, userId }: PDFViewerProps) {
             onPointerCancel={onPointerUp}
           />
         </div>
+        )}
       </div>
 
     </div>
