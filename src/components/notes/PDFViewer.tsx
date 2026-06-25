@@ -52,7 +52,7 @@ interface PDFViewerProps {
 export function PDFViewer({ pdfUrl, noteId, userId }: PDFViewerProps) {
   const [numPages, setNumPages]       = useState(0)
   const [currentPage, setCurrentPage] = useState(1)
-  const [scale, setScale]             = useState(1.2)
+  const [scale, setScale]             = useState(0.9)
   const [tool, setTool]               = useState<'pen' | 'highlighter' | 'eraser'>('pen')
   const [penColor, setPenColor]       = useState('#1E3A5F')
   const [hlColor, setHlColor]         = useState('#FDE047')
@@ -488,7 +488,11 @@ export function PDFViewer({ pdfUrl, noteId, userId }: PDFViewerProps) {
       </div>
 
       {/* ── PDF + Canvas ── */}
-      <div className="flex-1 overflow-auto flex justify-center p-4 bg-[#F4F3EF] dark:bg-[#222220]">
+      {/* onPointerDown com preventDefault para caneta impede que o Apple Pencil acione scroll */}
+      <div
+        className="flex-1 overflow-auto flex justify-center p-4 bg-[#F4F3EF] dark:bg-[#222220]"
+        onPointerDown={(e) => { if (e.pointerType === 'pen') e.preventDefault() }}
+      >
         {pdfError && (
           <div className="flex flex-col items-center justify-center gap-3 text-center p-8">
             <p className="text-sm font-medium text-red-500">{pdfError}</p>
