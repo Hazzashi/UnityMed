@@ -43,6 +43,7 @@ export function NotesWorkspace({ initialFolders, initialNotes, subjects, userId 
   const [newFolderName, setNewFolderName]   = useState('')
   const [addingFolder, setAddingFolder]     = useState(false)
   const [uploadingPdf, setUploadingPdf]         = useState(false)
+  const [uploadError, setUploadError]           = useState<string | null>(null)
   const [pdfSignedUrl, setPdfSignedUrl]         = useState<string | null>(null)
   const [notesSidebarOpen, setNotesSidebarOpen] = useState(true)
   const [editorPct, setEditorPct]               = useState(42)
@@ -143,25 +144,32 @@ export function NotesWorkspace({ initialFolders, initialNotes, subjects, userId 
   async function handlePdfUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file || !selectedNoteId) return
+    setUploadError(null)
     setUploadingPdf(true)
     try {
       const supabase = createClient()
       const path = `${userId}/${selectedNoteId}.pdf`
 
-      const { error: uploadError } = await supabase.storage
+      const { error: storageError } = await supabase.storage
         .from('pdfs')
         .upload(path, file, { upsert: true, contentType: 'application/pdf' })
-      if (uploadError) throw uploadError
+      if (storageError) {
+        const msg = storageError.message ?? ''
+        if (msg.toLowerCase().includes('size') || msg.toLowerCase().includes('large')) {
+          setUploadError(`Arquivo muito grande (${(file.size / 1024 / 1024).toFixed(0)} MB). Aumente o limite no Supabase Storage ou use um PDF menor.`)
+        } else {
+          setUploadError(`Erro ao enviar: ${msg}`)
+        }
+        return
+      }
 
-      // Salva o CAMINHO (não a URL pública) no banco
       await (supabase as any).from('notes').update({ pdf_url: path }).eq('id', selectedNoteId)
       setNotes(prev => prev.map(n => n.id === selectedNoteId ? { ...n, pdf_url: path } : n))
 
-      // Gera URL assinada imediatamente para abrir sem esperar o useEffect
       const { data: signed } = await supabase.storage.from('pdfs').createSignedUrl(path, 3600)
       if (signed) setPdfSignedUrl(signed.signedUrl)
-    } catch (err) {
-      console.error('[PDF] Upload error:', err)
+    } catch (err: any) {
+      setUploadError(`Erro inesperado: ${err?.message ?? err}`)
     } finally {
       setUploadingPdf(false)
       e.target.value = ''
@@ -297,6 +305,9 @@ export function NotesWorkspace({ initialFolders, initialNotes, subjects, userId 
                   </Button>
                 )}
                 <input ref={fileInputRef} type="file" accept="application/pdf,.pdf" className="hidden" onChange={handlePdfUpload} />
+                {uploadError && (
+                  <p className="text-[10px] text-red-400 leading-tight mt-0.5 max-w-[220px]">{uploadError}</p>
+                )}
               </div>
 
               <div className="flex-1 min-h-0 overflow-hidden">
