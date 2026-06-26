@@ -6,7 +6,7 @@ import 'react-pdf/dist/Page/TextLayer.css'
 import {
   ChevronLeft, ChevronRight, ZoomIn, ZoomOut,
   Pencil, Highlighter, Eraser, RotateCcw, RotateCw,
-  Trash2, Download, Loader2,
+  Trash2, Download, Loader2, AlertCircle,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
@@ -61,6 +61,7 @@ export function PDFViewer({ pdfUrl, noteId, userId }: PDFViewerProps) {
   const [redoStack, setRedoStack]     = useState<Stroke[]>([])
   const [exporting, setExporting]     = useState(false)
   const [pdfError, setPdfError]       = useState<string | null>(null)
+  const [dbError, setDbError]         = useState<string | null>(null)
   // Sinaliza quando a página do PDF terminou de renderizar
   const [pdfRendered, setPdfRendered] = useState(false)
 
@@ -90,19 +91,46 @@ export function PDFViewer({ pdfUrl, noteId, userId }: PDFViewerProps) {
 
   async function saveAnnotationsNow(nId: string, uId: string, pageNum: number, strokesToSave: Stroke[]) {
     const supabase = createClient()
-    const { error: delErr } = await (supabase as any).from('pdf_annotations').delete()
-      .eq('note_id', nId).eq('page_number', pageNum)
-    if (delErr) { console.error('[PDF] delete error:', delErr); return }
-    if (strokesToSave.length === 0) return
-    const { error: insErr } = await (supabase as any).from('pdf_annotations').insert(
-      strokesToSave.map(s => ({ note_id: nId, user_id: uId, page_number: pageNum, type: 'stroke', data: s }))
-    )
-    if (insErr) console.error('[PDF] insert error:', insErr)
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const sb = supabase as any
+
+    const { error: delErr } = await sb
+      .from('pdf_annotations')
+      .delete()
+      .eq('note_id', nId)
+      .eq('page_number', pageNum)
+
+    if (delErr) {
+      const msg = `Erro ao salvar (delete): ${delErr.message}`
+      console.error('[PDF]', msg, delErr)
+      setDbError(msg)
+      return
+    }
+
+    if (strokesToSave.length === 0) { setDbError(null); return }
+
+    const { error: insErr } = await sb
+      .from('pdf_annotations')
+      .insert(strokesToSave.map((s: Stroke) => ({
+        note_id:     nId,
+        user_id:     uId,
+        page_number: pageNum,
+        type:        'stroke',
+        data:        s,
+      })))
+
+    if (insErr) {
+      const msg = `Erro ao salvar (insert): ${insErr.message}`
+      console.error('[PDF]', msg, insErr)
+      setDbError(msg)
+    } else {
+      setDbError(null)
+    }
   }
 
-  // Dispara um save imediato e registra a promise para o próximo load aguardar
+  // Dispara save imediato e registra a promise para o próximo load aguardar
   function triggerSave(nId: string, uId: string, pageNum: number, strokesToSave: Stroke[]) {
-    // .catch garante que a promise sempre resolve — evita que o loadPage lance exceção no await
     const p = saveAnnotationsNow(nId, uId, pageNum, strokesToSave)
       .catch(err => console.error('[PDF] save error:', err))
     pendingSaveRef.current = p
@@ -141,7 +169,12 @@ export function PDFViewer({ pdfUrl, noteId, userId }: PDFViewerProps) {
         .select('data')
         .eq('note_id', noteId)
         .eq('page_number', currentPage)
-      if (error) console.error('[PDF] load error:', error)
+
+      if (error) {
+        const msg = `Erro ao carregar anotações: ${error.message}`
+        console.error('[PDF]', msg, error)
+        if (!cancelled) setDbError(msg)
+      }
       if (!cancelled) {
         setStrokes((data ?? []).map((r: any) => r.data as Stroke))
         loadingRef.current = false
@@ -496,6 +529,14 @@ export function PDFViewer({ pdfUrl, noteId, userId }: PDFViewerProps) {
         <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setScale(s => parseFloat(Math.min(3, s + 0.2).toFixed(1)))} title="Ampliar">
           <ZoomIn className="h-3.5 w-3.5" />
         </Button>
+
+        {/* DB error indicator */}
+        {dbError && (
+          <div className="flex items-center gap-1 text-red-500 text-[10px] max-w-[180px] truncate" title={dbError}>
+            <AlertCircle className="h-3 w-3 shrink-0" />
+            <span className="truncate">{dbError}</span>
+          </div>
+        )}
 
         {/* Export */}
         <div className="ml-auto">
