@@ -68,9 +68,12 @@ export function PDFViewer({ pdfUrl, noteId, userId }: PDFViewerProps) {
   const canvasRef      = useRef<HTMLCanvasElement>(null)
   const isDrawingRef   = useRef(false)
   const strokeRef      = useRef<Stroke | null>(null)
-  const strokesRef     = useRef<Stroke[]>([])
-  const saveTimerRef   = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const loadingRef     = useRef(false)
+  const strokesRef        = useRef<Stroke[]>([])
+  const saveTimerRef      = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const loadingRef        = useRef(false)
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
+  // Rastreia posição inicial do dedo para scroll manual (JS)
+  const touchScrollRef    = useRef<{ startX: number; startY: number; scrollLeft: number; scrollTop: number } | null>(null)
   // Promise do save em andamento — o load aguarda antes de buscar
   const pendingSaveRef = useRef<Promise<unknown> | null>(null)
   // Indica se o usuário fez alguma alteração nesta página
@@ -227,8 +230,14 @@ export function PDFViewer({ pdfUrl, noteId, userId }: PDFViewerProps) {
   }
 
   function onPointerDown(e: React.PointerEvent) {
-    // Dedo → deixa o browser rolar o PDF, não desenha
-    if (e.pointerType === 'touch') return
+    if (e.pointerType === 'touch') {
+      // Dedo: captura e rola o container via JS — touch-action:none impede o browser de fazer scroll
+      canvasRef.current?.setPointerCapture(e.pointerId)
+      const c = scrollContainerRef.current
+      if (c) touchScrollRef.current = { startX: e.clientX, startY: e.clientY, scrollLeft: c.scrollLeft, scrollTop: c.scrollTop }
+      return
+    }
+    // Caneta / mouse: desenha
     e.preventDefault()
     canvasRef.current?.setPointerCapture(e.pointerId)
     isDrawingRef.current = true
@@ -240,6 +249,15 @@ export function PDFViewer({ pdfUrl, noteId, userId }: PDFViewerProps) {
   }
 
   function onPointerMove(e: React.PointerEvent) {
+    if (e.pointerType === 'touch') {
+      const s = touchScrollRef.current
+      const c = scrollContainerRef.current
+      if (s && c) {
+        c.scrollLeft = s.scrollLeft - (e.clientX - s.startX)
+        c.scrollTop  = s.scrollTop  - (e.clientY - s.startY)
+      }
+      return
+    }
     if (!isDrawingRef.current || !strokeRef.current) return
     const pt = getPoint(e)
     if (!pt) return
@@ -273,7 +291,8 @@ export function PDFViewer({ pdfUrl, noteId, userId }: PDFViewerProps) {
     ctx.restore()
   }
 
-  function onPointerUp() {
+  function onPointerUp(e: React.PointerEvent) {
+    if (e.pointerType === 'touch') { touchScrollRef.current = null; return }
     if (!isDrawingRef.current || !strokeRef.current) return
     isDrawingRef.current = false
     const s = strokeRef.current
@@ -488,10 +507,9 @@ export function PDFViewer({ pdfUrl, noteId, userId }: PDFViewerProps) {
       </div>
 
       {/* ── PDF + Canvas ── */}
-      {/* onPointerDown com preventDefault para caneta impede que o Apple Pencil acione scroll */}
       <div
+        ref={scrollContainerRef}
         className="flex-1 overflow-auto flex justify-center p-4 bg-[#F4F3EF] dark:bg-[#222220]"
-        onPointerDown={(e) => { if (e.pointerType === 'pen') e.preventDefault() }}
       >
         {pdfError && (
           <div className="flex flex-col items-center justify-center gap-3 text-center p-8">
@@ -528,7 +546,7 @@ export function PDFViewer({ pdfUrl, noteId, userId }: PDFViewerProps) {
           <canvas
             ref={canvasRef}
             className="absolute inset-0"
-            style={{ touchAction: 'pan-x pan-y', cursor: tool === 'eraser' ? 'cell' : 'crosshair' }}
+            style={{ touchAction: 'none', cursor: tool === 'eraser' ? 'cell' : 'crosshair' }}
             onPointerDown={onPointerDown}
             onPointerMove={onPointerMove}
             onPointerUp={onPointerUp}
